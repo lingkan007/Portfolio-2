@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lingkan Sarkar · Security Researcher</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['Share Tech Mono', 'monospace'],
+            display: ['Orbitron', 'sans-serif'],
+            body: ['Rajdhani', 'sans-serif'],
+          },
+          colors: {
+            cyber: {
+              green: '#00ff41',
+              dim: '#00aa2b',
+              dark: '#0a0a0a',
+              panel: '#0d0d0d',
+              border: '#1a1a1a',
+              red: '#ff003c',
+              blue: '#00d4ff',
+              yellow: '#ffcc00',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #050505;
+      color: #00ff41;
+      font-family: 'Rajdhani', sans-serif;
+      overflow-x: hidden;
+      cursor: none;
+    }
+
+    #cursor {
+      position: fixed;
+      width: 16px; height: 16px;
+      background: #00ff41;
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: transform 0.1s ease;
+      box-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+    }
+    #cursor-ring {
+      position: fixed;
+      width: 40px; height: 40px;
+      border: 1px solid #00ff4166;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9998;
+      transform: translate(-50%, -50%);
+      transition: all 0.15s ease;
+    }
+
+    #matrix-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      opacity: 0.06;
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px);
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    .nav-container {
+      background: rgba(5,5,5,0.9);
+      border-bottom: 1px solid #00ff4122;
+      backdrop-filter: blur(20px);
+    }
+    .nav-link {
+      position: relative;
+      color: #888;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      text-decoration: none;
+      transition: color 0.3s;
+      padding: 0.5rem 0;
+    }
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0;
+      width: 0; height: 1px;
+      background: #00ff41;
+      box-shadow: 0 0 8px #00ff41;
+      transition: width 0.3s ease;
+    }
+    .nav-link:hover, .nav-link.active { color: #00ff41; }
+    .nav-link:hover::after, .nav-link.active::after { width: 100%; }
+
+    .panel {
+      background: rgba(10,10,10,0.8);
+      border: 1px solid #00ff4122;
+      backdrop-filter: blur(20px);
+      position: relative;
+      overflow: hidden;
+    }
+    .panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%;
+      width: 60%; height: 1px;
+      background: linear-gradient(90deg, transparent, #00ff41, transparent);
+      animation: slide-right 3s ease infinite;
+    }
+    @keyframes slide-right {
+      0% { left: -100%; }
+      100% { left: 200%; }
+    }
+
+    /* ─── FIXED REVEAL SYSTEM ─── */
+    /* Default: visible. JS will add animation only for off-screen items */
+    .reveal, .reveal-left, .reveal-right {
+      opacity: 1;
+      transform: none;
+      transition: opacity 0.8s ease, transform 0.8s ease;
+    }
+    /* JS adds .will-animate before observing */
+    .will-animate {
+      opacity: 0 !important;
+    }
+    .will-animate.reveal { transform: translateY(40px) !important; }
+    .will-animate.reveal-left { transform: translateX(-40px) !important; }
+    .will-animate.reveal-right { transform: translateX(40px) !important; }
+    .will-animate.visible {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+
+    .glitch {
+      position: relative;
+      animation: glitchAnim 4s infinite;
+    }
+    .glitch::before, .glitch::after {
+      content: attr(data-text);
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+    }
+    .glitch::before {
+      color: #ff003c;
+      animation: glitchBefore 4s infinite;
+      clip-path: polygon(0 0, 100% 0, 100% 33%, 0 33%);
+    }
+    .glitch::after {
+      color: #00d4ff;
+      animation: glitchAfter 4s infinite;
+      clip-path: polygon(0 67%, 100% 67%, 100% 100%, 0 100%);
+    }
+    @keyframes glitchAnim {
+      0%, 95%, 100% { transform: translate(0); }
+      96% { transform: translate(-2px, 1px); }
+      97% { transform: translate(2px, -1px); }
+      98% { transform: translate(-1px, 2px); }
+    }
+    @keyframes glitchBefore {
+      0%, 95%, 100% { transform: translate(0); }
+      96% { transform: translate(3px, 0); }
+      97% { transform: translate(-3px, 0); }
+      98% { transform: translate(0, 1px); }
+    }
+    @keyframes glitchAfter {
+      0%, 95%, 100% { transform: translate(0); }
+      96% { transform: translate(-3px, 1px); }
+      97% { transform: translate(3px, -1px); }
+    }
+
+    .cursor-blink::after {
+      content: '_';
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .skill-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #00ff41, #00d4ff);
+      box-shadow: 0 0 8px #00ff41;
+      transition: width 1.5s ease;
+      position: relative;
+    }
+    .skill-fill.animated::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 0;
+      width: 4px; height: 100%;
+      background: white;
+      box-shadow: 0 0 8px white;
+      animation: blink 0.8s step-end infinite;
+    }
+
+    .project-card {
+      border: 1px solid #00ff4122;
+      background: rgba(0,255,65,0.02);
+      transition: all 0.4s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .project-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 2px;
+      background: linear-gradient(90deg, transparent, #00ff41, transparent);
+      transform: scaleX(0);
+      transition: transform 0.4s ease;
+    }
+    .project-card:hover::before { transform: scaleX(1); }
+    .project-card:hover {
+      border-color: #00ff4155;
+      background: rgba(0,255,65,0.05);
+      transform: translateY(-6px);
+      box-shadow: 0 20px 40px rgba(0,255,65,0.1), 0 0 0 1px #00ff4133;
+    }
+
+    .cert-card {
+      border: 1px solid #00d4ff22;
+      background: rgba(0,212,255,0.02);
+      transition: all 0.4s ease;
+      position: relative;
+    }
+    .cert-card:hover {
+      border-color: #00d4ff44;
+      background: rgba(0,212,255,0.06);
+      transform: translateY(-6px);
+      box-shadow: 0 20px 40px rgba(0,212,255,0.1);
+    }
+
+    .timeline-dot {
+      width: 12px; height: 12px;
+      background: #00ff41;
+      box-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+      border: 2px solid #050505;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 5px #00ff41, 0 0 10px #00ff41; }
+      50% { box-shadow: 0 0 15px #00ff41, 0 0 30px #00ff41, 0 0 50px #00ff41; }
+    }
+
+    .form-input {
+      background: rgba(0,255,65,0.03);
+      border: 1px solid #00ff4122;
+      color: #00ff41;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.9rem;
+      outline: none;
+      transition: all 0.3s;
+      width: 100%;
+      padding: 0.8rem 1rem;
+    }
+    .form-input::placeholder { color: #00ff4144; }
+    .form-input:focus {
+      border-color: #00ff4188;
+      box-shadow: 0 0 20px rgba(0,255,65,0.1), inset 0 0 20px rgba(0,255,65,0.03);
+    }
+
+    .btn-cyber {
+      position: relative;
+      overflow: hidden;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      background: transparent;
+      border: 1px solid #00ff41;
+      color: #00ff41;
+      padding: 0.8rem 2rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-cyber::before {
+      content: '';
+      position: absolute;
+      top: 0; left: -100%;
+      width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(0,255,65,0.3), transparent);
+      transition: left 0.4s ease;
+    }
+    .btn-cyber:hover::before { left: 100%; }
+    .btn-cyber:hover {
+      background: rgba(0,255,65,0.1);
+      box-shadow: 0 0 20px rgba(0,255,65,0.3), inset 0 0 20px rgba(0,255,65,0.05);
+    }
+    .btn-red {
+      border-color: #ff003c;
+      color: #ff003c;
+    }
+    .btn-red:hover {
+      background: rgba(255,0,60,0.1);
+      box-shadow: 0 0 20px rgba(255,0,60,0.3);
+    }
+
+    .section-header {
+      font-family: 'Orbitron', sans-serif;
+      color: #00ff41;
+      letter-spacing: 0.1em;
+    }
+    .section-line {
+      height: 1px;
+      background: linear-gradient(90deg, #00ff41, transparent);
+      box-shadow: 0 0 8px #00ff41;
+    }
+
+    .photo-frame {
+      position: relative;
+      display: inline-block;
+    }
+    .photo-frame::before {
+      content: '';
+      position: absolute;
+      inset: -8px;
+      border: 1px solid #00ff4144;
+      clip-path: polygon(15px 0%, 100% 0%, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0% 100%, 0% 15px);
+    }
+    .photo-frame::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border: 1px solid #00ff4222;
+      clip-path: polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px);
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      background: #00ff41;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+      display: inline-block;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #050505; }
+    ::-webkit-scrollbar-thumb { background: #00ff4133; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: #00ff41; }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      opacity: 0.03;
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    .section-tag {
+      font-family: 'Share Tech Mono', monospace;
+      color: #00ff4166;
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+    }
+
+    /* Skill row wrapper */
+    .skill-row { margin-bottom: 1.25rem; }
+  </style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+<canvas id="matrix-canvas"></canvas>
+
+<!-- NAVBAR -->
+<nav class="nav-container fixed top-0 left-0 right-0 z-50">
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="status-dot"></div>
+      <span style="font-family:'Orbitron',sans-serif;font-size:1.1rem;color:#00ff41;letter-spacing:0.1em;text-shadow:0 0 10px #00ff41">L.SARKAR</span>
+    </div>
+    <ul class="hidden md:flex items-center gap-8">
+      <li><a href="#hero" class="nav-link active" data-nav>HOME</a></li>
+      <li><a href="#about" class="nav-link" data-nav>ABOUT</a></li>
+      <li><a href="#skills" class="nav-link" data-nav>SKILLS</a></li>
+      <li><a href="#certifications" class="nav-link" data-nav>CERTS</a></li>
+      <li><a href="#projects" class="nav-link" data-nav>PROJECTS</a></li>
+      <li><a href="#resume" class="nav-link" data-nav>RESUME</a></li>
+      <li><a href="#contact" class="nav-link" data-nav>CONTACT</a></li>
+    </ul>
+    <div class="flex items-center gap-3">
+      <span style="font-family:'Share Tech Mono',monospace;color:#00ff4144;font-size:0.7rem" id="clock"></span>
+      <div style="width:1px;height:20px;background:#00ff4122"></div>
+      <span style="font-family:'Share Tech Mono',monospace;color:#ff003c;font-size:0.7rem">[ ONLINE ]</span>
+    </div>
+  </div>
+</nav>
+
+<main class="relative z-10">
+
+  <!-- HERO -->
+  <section id="hero" class="min-h-screen flex items-center pt-20 px-6 max-w-7xl mx-auto">
+    <div class="w-full grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+      <div class="space-y-6">
+        <div class="section-tag reveal">&gt; INITIALIZING PROFILE...</div>
+        <div class="reveal" style="transition-delay:0.1s">
+          <h1 class="glitch" data-text="LINGKAN SARKAR" style="font-family:'Orbitron',sans-serif;font-size:clamp(2rem,5vw,4rem);font-weight:900;color:#00ff41;line-height:1;text-shadow:0 0 20px #00ff4144;letter-spacing:0.05em">LINGKAN SARKAR</h1>
+        </div>
+        <div class="reveal" style="transition-delay:0.2s">
+          <div style="font-family:'Share Tech Mono',monospace;color:#00d4ff;font-size:1.1rem" id="typewriter-text"></div>
+        </div>
+        <div class="reveal panel p-4 border-l-2" style="border-left-color:#00ff41;transition-delay:0.3s">
+          <p style="font-family:'Share Tech Mono',monospace;color:#aaa;font-size:0.85rem;line-height:1.8">
+            <span style="color:#00ff41">root@kali:~$</span> whoami<br>
+            <span style="color:#ddd">&gt; Breaking crypto, one modulus at a time.</span><br>
+            <span style="color:#00ff41">root@kali:~$</span> cat skills.txt | grep active<br>
+            <span style="color:#ddd">&gt; RSA · Forensics · OSINT · Web Exploitation · Steganography</span><span class="cursor-blink" style="color:#00ff41"></span>
+          </p>
+        </div>
+        <div class="reveal flex gap-4 flex-wrap" style="transition-delay:0.4s">
+          <a href="#" class="btn-cyber">DOWNLOAD CV <i class="fas fa-arrow-down ml-2"></i></a>
+          <a href="#contact" class="btn-cyber btn-red">CONTACT ME</a>
+        </div>
+        <div class="reveal flex gap-6" style="transition-delay:0.5s">
+          <a href="#" style="color:#555;font-size:1.3rem;transition:all 0.3s" onmouseover="this.style.color='#00ff41';this.style.textShadow='0 0 10px #00ff41'" onmouseout="this.style.color='#555';this.style.textShadow='none'"><i class="fab fa-github"></i></a>
+          <a href="#" style="color:#555;font-size:1.3rem;transition:all 0.3s" onmouseover="this.style.color='#00d4ff';this.style.textShadow='0 0 10px #00d4ff'" onmouseout="this.style.color='#555';this.style.textShadow='none'"><i class="fab fa-linkedin"></i></a>
+          <a href="#" style="color:#555;font-size:1.3rem;transition:all 0.3s" onmouseover="this.style.color='#ff003c';this.style.textShadow='0 0 10px #ff003c'" onmouseout="this.style.color='#555';this.style.textShadow='none'"><i class="fab fa-twitter"></i></a>
+          <a href="mailto:lingkansarkar4@gmail.com" style="color:#555;font-size:1.3rem;transition:all 0.3s" onmouseover="this.style.color='#ffcc00';this.style.textShadow='0 0 10px #ffcc00'" onmouseout="this.style.color='#555';this.style.textShadow='none'"><i class="fas fa-envelope"></i></a>
+        </div>
+      </div>
+
+      <div class="flex flex-col items-center gap-8 reveal" style="transition-delay:0.2s">
+        <div class="photo-frame">
+          <div style="width:280px;height:280px;clip-path:polygon(15% 0%,85% 0%,100% 15%,100% 85%,85% 100%,15% 100%,0% 85%,0% 15%);background:linear-gradient(135deg,#00ff4122,#00d4ff11);border:1px solid #00ff4133;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
+            <img src="assets/images/profile.jpg" alt="Lingkan" style="width:100%;height:100%;object-fit:cover;filter:grayscale(20%) contrast(1.1)" onerror="this.style.display='none';document.getElementById('photo-fallback').style.display='flex'">
+            <div id="photo-fallback" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;color:#00ff4166;flex-direction:column;gap:0.5rem;background:linear-gradient(135deg,#00ff4108,#00d4ff08)">
+              <i class="fas fa-user" style="font-size:4rem"></i>
+              <span style="font-size:0.7rem;letter-spacing:0.2em">LINGKAN SARKAR</span>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-3 w-full">
+          <div class="panel p-4 text-center">
+            <div style="font-family:'Orbitron',sans-serif;font-size:1.5rem;color:#00ff41;text-shadow:0 0 10px #00ff41" class="count-up" data-target="150">0</div>
+            <div style="font-family:'Share Tech Mono',monospace;color:#555;font-size:0.65rem;letter-spacing:0.1em">CTF SOLVES</div>
+          </div>
+          <div class="panel p-4 text-center">
+            <div style="font-family:'Orbitron',sans-serif;font-size:1.5rem;color:#00d4ff;text-shadow:0 0 10px #00d4ff" class="count-up" data-target="8">0</div>
+            <div style="font-family:'Share Tech Mono',monospace;color:#555;font-size:0.65rem;letter-spacing:0.1em">PROJECTS</div>
+          </div>
+          <div class="panel p-4 text-center">
+            <div style="font-family:'Orbitron',sans-serif;font-size:1.5rem;color:#ff003c;text-shadow:0 0 10px #ff003c" class="count-up" data-target="4">0</div>
+            <div style="font-family:'Share Tech Mono',monospace;color:#555;font-size:0.65rem;letter-spacing:0.1em">CERTS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ABOUT -->
+  <section id="about" class="py-28 px-6 max-w-7xl mx-auto">
+    <div class="flex items-center gap-4 mb-16 reveal">
+      <span class="section-tag">02</span>
+      <h2 class="section-header text-2xl">ABOUT</h2>
+      <div class="section-line flex-1"></div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+      <div class="lg:col-span-3 panel p-8 reveal-left">
+        <div style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.75rem;margin-bottom:1.5rem">// bio.txt</div>
+        <p style="font-family:'Rajdhani',sans-serif;color:#aaa;font-size:1.05rem;line-height:1.9;margin-bottom:1.5rem">
+          I'm <span style="color:#00ff41">Lingkan</span>, a Computer Science and Engineering student from Bangladesh and an active CTF player. I spend most of my time solving CTF challenges, performing web exploitation, breaking crypto, and uncovering hidden artifacts in images and audio.
+        </p>
+        <p style="font-family:'Rajdhani',sans-serif;color:#aaa;font-size:1.05rem;line-height:1.9">
+          Currently diving deep into <span style="color:#00d4ff">modular arithmetic</span> and forensics. I believe security is not a product, but a <span style="color:#ff003c">process</span>.
+        </p>
+        <div class="mt-8 grid grid-cols-2 gap-4">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:0.8rem">
+            <span style="color:#00ff4166">NAME:</span><br><span style="color:#ddd">Lingkan Sarkar</span>
+          </div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:0.8rem">
+            <span style="color:#00ff4166">LOCATION:</span><br><span style="color:#ddd">Bangladesh 🇧🇩</span>
+          </div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:0.8rem">
+            <span style="color:#00ff4166">ROLE:</span><br><span style="color:#ddd">CSE Student & CTF Player</span>
+          </div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:0.8rem">
+            <span style="color:#00ff4166">FOCUS:</span><br><span style="color:#ddd">Web · OSENT · Forensics · Crypto</span>
+          </div>
+        </div>
+      </div>
+      <div class="lg:col-span-2 space-y-4 reveal-right">
+        <div class="panel p-6">
+          <div style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.75rem;margin-bottom:1rem">// current_status.log</div>
+          <div class="space-y-3">
+            <div class="flex items-center gap-3"><div class="status-dot"></div><span style="font-family:'Share Tech Mono',monospace;color:#aaa;font-size:0.8rem">SYSTEM ONLINE</span></div>
+            <div class="flex items-center gap-3"><div style="width:8px;height:8px;background:#ffcc00;border-radius:50%;animation:pulse 1.5s infinite"></div><span style="font-family:'Share Tech Mono',monospace;color:#aaa;font-size:0.8rem">SOLVING CTF CHALLENGES</span></div>
+            <div class="flex items-center gap-3"><div style="width:8px;height:8px;background:#00d4ff;border-radius:50%;animation:pulse 2.5s infinite"></div><span style="font-family:'Share Tech Mono',monospace;color:#aaa;font-size:0.8rem">STUDYING B.SC CSE</span></div>
+            <div class="flex items-center gap-3"><div style="width:8px;height:8px;background:#ff003c;border-radius:50%;animation:pulse 3s infinite"></div><span style="font-family:'Share Tech Mono',monospace;color:#aaa;font-size:0.8rem">RESEARCHING CYBER SECURITY</span></div>
+          </div>
+        </div>
+        <div class="panel p-6">
+          <div style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.75rem;margin-bottom:1rem">// specialties</div>
+          <div class="flex flex-wrap gap-2">
+            <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #00ff4133;color:#00ff4188;background:rgba(0,255,65,0.05)">RSA ATTACKS</span>
+            <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #00d4ff33;color:#00d4ff88;background:rgba(0,212,255,0.05)">STEGANOGRAPHY</span>
+            <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #ff003c33;color:#ff003c88;background:rgba(255,0,60,0.05)">WEB EXPLOIT</span>
+            <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #ffcc0033;color:#ffcc0088;background:rgba(255,204,0,0.05)">OSINT</span>
+            <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #00ff4133;color:#00ff4188;background:rgba(0,255,65,0.05)">FORENSICS</span>
+            <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #00d4ff33;color:#00d4ff88;background:rgba(0,212,255,0.05)">PYTHON</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SKILLS -->
+  <section id="skills" class="py-28 px-6 max-w-7xl mx-auto">
+    <div class="flex items-center gap-4 mb-16 reveal">
+      <span class="section-tag">03</span>
+      <h2 class="section-header text-2xl">SKILLS & TOOLS</h2>
+      <div class="section-line flex-1"></div>
+    </div>
+    <div id="skills-container"></div>
+  </section>
+
+  <!-- CERTIFICATIONS -->
+  <section id="certifications" class="py-28 px-6 max-w-7xl mx-auto">
+    <div class="flex items-center gap-4 mb-16 reveal">
+      <span class="section-tag">04</span>
+      <h2 class="section-header text-2xl">CERTIFICATIONS</h2>
+      <div class="section-line flex-1"></div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="certs-container"></div>
+  </section>
+
+  <!-- PROJECTS -->
+  <section id="projects" class="py-28 px-6 max-w-7xl mx-auto">
+    <div class="flex items-center gap-4 mb-16 reveal">
+      <span class="section-tag">05</span>
+      <h2 class="section-header text-2xl">PROJECTS</h2>
+      <div class="section-line flex-1"></div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5" id="projects-container"></div>
+  </section>
+
+  <!-- RESUME -->
+  <section id="resume" class="py-28 px-6 max-w-7xl mx-auto">
+    <div class="flex items-center gap-4 mb-16 reveal">
+      <span class="section-tag">06</span>
+      <h2 class="section-header text-2xl">EDUCATION & EXPERIENCE</h2>
+      <div class="section-line flex-1"></div>
+    </div>
+    <div class="relative pl-8" style="border-left:1px solid #00ff4122">
+      <div style="position:absolute;left:-1px;top:0;bottom:0;width:1px;background:linear-gradient(to bottom,#00ff41,#00d4ff,transparent)"></div>
+      <div class="space-y-8">
+        <div class="reveal relative">
+          <div class="timeline-dot absolute -left-10 top-6 rounded-full"></div>
+          <div class="panel p-6 ml-4">
+            <div class="flex items-start justify-between flex-wrap gap-3">
+              <div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.7rem;margin-bottom:0.3rem">2025 — PRESENT</div>
+                <h3 style="font-family:'Orbitron',sans-serif;color:#00ff41;font-size:1rem;letter-spacing:0.05em">CTF PLAYER</h3>
+                <p style="color:#666;font-size:0.9rem;font-family:'Rajdhani',sans-serif;margin-top:0.3rem">Active CTF participant — specializing in Crypto, Forensics &amp; Stego categories</p>
+              </div>
+              <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #00ff4133;color:#00ff4188">ACTIVE</span>
+            </div>
+          </div>
+        </div>
+        <div class="reveal relative" style="transition-delay:0.1s">
+          <div class="timeline-dot absolute -left-10 top-6 rounded-full" style="background:#00d4ff;box-shadow:0 0 10px #00d4ff,0 0 20px #00d4ff"></div>
+          <div class="panel p-6 ml-4">
+            <div class="flex items-start justify-between flex-wrap gap-3">
+              <div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#00d4ff66;font-size:0.7rem;margin-bottom:0.3rem">2025 — PRESENT</div>
+                <h3 style="font-family:'Orbitron',sans-serif;color:#00d4ff;font-size:1rem;letter-spacing:0.05em">CYBER RESEARCH</h3>
+                <p style="color:#666;font-size:0.9rem;font-family:'Rajdhani',sans-serif;margin-top:0.3rem">Independent security research focusing on cryptographic vulnerabilities</p>
+              </div>
+              <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #00d4ff33;color:#00d4ff88">ONGOING</span>
+            </div>
+          </div>
+        </div>
+        <div class="reveal relative" style="transition-delay:0.2s">
+          <div class="timeline-dot absolute -left-10 top-6 rounded-full" style="background:#ffcc00;box-shadow:0 0 10px #ffcc00,0 0 20px #ffcc00"></div>
+          <div class="panel p-6 ml-4">
+            <div class="flex items-start justify-between flex-wrap gap-3">
+              <div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#ffcc0066;font-size:0.7rem;margin-bottom:0.3rem">2025 — 2029</div>
+                <h3 style="font-family:'Orbitron',sans-serif;color:#ffcc00;font-size:1rem;letter-spacing:0.05em">B.SC. CSE</h3>
+                <p style="color:#666;font-size:0.9rem;font-family:'Rajdhani',sans-serif;margin-top:0.3rem">Bachelor of Science in Computer Science &amp; Engineering</p>
+              </div>
+              <span style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:0.3rem 0.8rem;border:1px solid #ffcc0033;color:#ffcc0088">IN PROGRESS</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section id="contact" class="py-28 px-6 max-w-7xl mx-auto">
+    <div class="flex items-center gap-4 mb-16 reveal">
+      <span class="section-tag">07</span>
+      <h2 class="section-header text-2xl">CONTACT</h2>
+      <div class="section-line flex-1"></div>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div class="panel p-8 reveal-left">
+        <div style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.75rem;margin-bottom:1.5rem">// send_message.sh</div>
+        <form id="contactForm" class="space-y-4">
+          <div>
+            <label style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.7rem;display:block;margin-bottom:0.4rem">&gt; NAME:</label>
+            <input type="text" class="form-input" placeholder="your_name" required>
+          </div>
+          <div>
+            <label style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.7rem;display:block;margin-bottom:0.4rem">&gt; EMAIL:</label>
+            <input type="email" class="form-input" placeholder="target@domain.com" required>
+          </div>
+          <div>
+            <label style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.7rem;display:block;margin-bottom:0.4rem">&gt; MESSAGE:</label>
+            <textarea class="form-input" rows="5" placeholder="// your message..." style="resize:none" required></textarea>
+          </div>
+          <button type="submit" class="btn-cyber w-full justify-center" style="display:flex;align-items:center;gap:0.5rem">
+            <i class="fas fa-paper-plane"></i> SEND MESSAGE
+          </button>
+        </form>
+      </div>
+      <div class="space-y-4 reveal-right">
+        <div class="panel p-6">
+          <div style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.75rem;margin-bottom:1.2rem">// contact_info.txt</div>
+          <div class="space-y-5">
+            <div class="flex items-center gap-4">
+              <div style="width:40px;height:40px;border:1px solid #00ff4133;display:flex;align-items:center;justify-content:center;color:#00ff41;font-size:1rem;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)"><i class="fas fa-envelope"></i></div>
+              <div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#555;font-size:0.65rem">EMAIL</div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#ddd;font-size:0.85rem">lingkansarkar4@gmail.com</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-4">
+              <div style="width:40px;height:40px;border:1px solid #00ff4133;display:flex;align-items:center;justify-content:center;color:#00ff41;font-size:1rem;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)"><i class="fab fa-whatsapp"></i></div>
+              <div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#555;font-size:0.65rem">WHATSAPP</div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#ddd;font-size:0.85rem">+8801728354810</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-4">
+              <div style="width:40px;height:40px;border:1px solid #00ff4133;display:flex;align-items:center;justify-content:center;color:#00ff41;font-size:1rem;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)"><i class="fas fa-map-pin"></i></div>
+              <div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#555;font-size:0.65rem">LOCATION</div>
+                <div style="font-family:'Share Tech Mono',monospace;color:#ddd;font-size:0.85rem">Bangladesh</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel p-6">
+          <div style="font-family:'Share Tech Mono',monospace;color:#00ff4166;font-size:0.75rem;margin-bottom:1rem">// pgp_key.pub</div>
+          <div style="font-family:'Share Tech Mono',monospace;color:#00ff4133;font-size:0.65rem;line-height:1.6;word-break:break-all">
+            -----BEGIN PUBLIC KEY-----<br>
+            MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQ<br>
+            EAhXgK5Y2mT8v...CTF_RESEARCHER...<br>
+            -----END PUBLIC KEY-----
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer style="border-top:1px solid #00ff4111;padding:2rem;text-align:center;font-family:'Share Tech Mono',monospace;color:#333;font-size:0.75rem;position:relative;z-index:10">
+  <span style="color:#00ff4144">[</span> LINGKAN.SARKAR <span style="color:#00ff4144">©</span> 2025 <span style="color:#00ff4144">|</span> SECURITY RESEARCHER <span style="color:#00ff4144">|</span> ALL SYSTEMS OPERATIONAL <span style="color:#00ff4144">]</span>
+</footer>
+
+<script>
+// ── MATRIX RAIN ──
+const canvas = document.getElementById('matrix-canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+const cols = Math.floor(canvas.width / 18);
+const drops = Array(cols).fill(1);
+const chars = '0123456789ABCDEF></?!@#$%^&*(){}[]|;:,.~αβγδεζηθλμπσΩ∑∏∫√∞≠≤≥±÷×';
+function drawMatrix() {
+  ctx.fillStyle = 'rgba(5,5,5,0.05)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#00ff41';
+  ctx.font = '14px Share Tech Mono';
+  drops.forEach((d, i) => {
+    const c = chars[Math.floor(Math.random() * chars.length)];
+    const x = i * 18, y = d * 18;
+    ctx.fillStyle = d * 18 > canvas.height * 0.8 ? '#00ff4133' : (Math.random() > 0.95 ? '#fff' : '#00ff41');
+    ctx.fillText(c, x, y);
+    if (y > canvas.height && Math.random() > 0.975) drops[i] = 0;
+    drops[i]++;
+  });
+}
+setInterval(drawMatrix, 60);
+window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+
+// ── CURSOR ──
+const cursor = document.getElementById('cursor');
+const ring = document.getElementById('cursor-ring');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+  setTimeout(() => { ring.style.left = e.clientX + 'px'; ring.style.top = e.clientY + 'px'; }, 80);
+});
+
+// ── CLOCK ──
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toTimeString().slice(0,8);
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── TYPEWRITER ──
+const roles = ['CTF ANALYST','SECURITY RESEARCHER','CRYPTO BREAKER','FORENSICS EXPERT','CSE STUDENT'];
+let ri = 0, ci = 0, deleting = false;
+const tw = document.getElementById('typewriter-text');
+function type() {
+  const current = roles[ri];
+  if (!deleting) {
+    tw.textContent = '> ' + current.slice(0, ci + 1) + '█';
+    ci++;
+    if (ci === current.length) { deleting = true; setTimeout(type, 1800); return; }
+  } else {
+    tw.textContent = '> ' + current.slice(0, ci - 1) + '█';
+    ci--;
+    if (ci === 0) { deleting = false; ri = (ri + 1) % roles.length; }
+  }
+  setTimeout(type, deleting ? 50 : 100);
+}
+type();
+
+// ── DATA ──
+const skillsData = [
+  { name: 'CRYPTOGRAPHY', level: 90, color: '#00ff41', icon: 'fa-lock' },
+  { name: 'OSINT', level: 90, color: '#00d4ff', icon: 'fa-globe' },
+  { name: 'STEGANOGRAPHY', level: 85, color: '#00ff41', icon: 'fa-image' },
+  { name: 'IMAGE / AUDIO FORENSICS', level: 80, color: '#ffcc00', icon: 'fa-headphones' },
+  { name: 'WEB SECURITY', level: 75, color: '#ff003c', icon: 'fa-shield-alt' },
+  { name: 'PYTHON', level: 88, color: '#00d4ff', icon: 'fa-code' },
+  { name: 'LINUX TOOLS', level: 82, color: '#00ff41', icon: 'fa-terminal' },
+  { name: 'DEVELOPMENT', level: 70, color: '#ffcc00', icon: 'fa-laptop-code' },
+];
+
+const certsData = [
+  { title: 'CTF PARTICIPANT', issuer: 'BUP CSE Tech Carnival', year: '2025', pdf: 'assets/certs/BUP-CTF.pdf', color: '#00ff41', icon: 'fa-flag' },
+  { title: 'CYBERCON 2025', issuer: 'Uttara University', year: '2025', pdf: 'assets/certs/Cybercon2025.pdf', color: '#00d4ff', icon: 'fa-shield-alt' },
+  { title: 'PROGRAMMING BOOTCAMP', issuer: 'Uttara University', year: '2025', pdf: 'assets/certs/Bootcamp.pdf', color: '#ffcc00', icon: 'fa-code' },
+  { title: 'FOOD FEAST 2026', issuer: 'Uttara University', year: '2026', pdf: 'assets/certs/FoodFeast2026.pdf', color: '#ff003c', icon: 'fa-star' },
+];
+
+const projectsData = [
+  { title: 'RSA ORACLE', desc: 'LSB oracle attack demonstration tool', stack: ['Python', 'pwn'], icon: 'fa-key', color: '#ff003c' },
+  { title: 'STEGO TOOLKIT', desc: 'Hide/extract data in images and audio', stack: ['Python', 'PIL'], icon: 'fa-eye-slash', color: '#00ff41' },
+  { title: 'FORENSIC ANALYZER', desc: 'Extract and analyze file metadata', stack: ['bash', 'exiftool'], icon: 'fa-search', color: '#00d4ff' },
+  { title: 'CTF WRITEUPS', desc: 'Documented CTF challenge solutions', stack: ['markdown'], icon: 'fa-file-alt', color: '#ffcc00' },
+  { title: 'MODARITH LIB', desc: 'Modular arithmetic operations library', stack: ['C', 'Python'], icon: 'fa-calculator', color: '#00ff41' },
+  { title: 'WEB CHALL LAB', desc: 'Deliberately vulnerable web application', stack: ['flask', 'sqli'], icon: 'fa-bug', color: '#ff003c' },
+  { title: 'BINWALK WRAPPER', desc: 'Automated firmware analysis helper', stack: ['Python'], icon: 'fa-microchip', color: '#00d4ff' },
+  { title: 'WIRESHARK DISSECTOR', desc: 'Custom protocol parser plugin', stack: ['lua'], icon: 'fa-network-wired', color: '#ffcc00' },
+];
+
+// ── INJECT SKILLS ──
+const skillsContainer = document.getElementById('skills-container');
+skillsData.forEach(s => {
+  const div = document.createElement('div');
+  div.className = 'skill-row';
+  div.innerHTML = `
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.5rem">
+      <i class="fas ${s.icon}" style="color:${s.color};width:20px;font-size:0.9rem;flex-shrink:0"></i>
+      <span style="font-family:'Share Tech Mono',monospace;color:#aaa;font-size:0.8rem;letter-spacing:0.1em;flex:1">${s.name}</span>
+      <span style="font-family:'Orbitron',sans-serif;color:${s.color};font-size:0.8rem">${s.level}%</span>
+    </div>
+    <div style="height:4px;background:#111;position:relative;overflow:hidden;border-radius:2px">
+      <div class="skill-fill" data-level="${s.level}" style="background:linear-gradient(90deg,${s.color}88,${s.color});box-shadow:0 0 8px ${s.color}"></div>
+    </div>`;
+  skillsContainer.appendChild(div);
+});
+
+// ── INJECT CERTS ──
+document.getElementById('certs-container').innerHTML = certsData.map(c => `
+  <div class="cert-card p-6">
+    <div style="width:48px;height:48px;border:1px solid ${c.color}33;display:flex;align-items:center;justify-content:center;margin-bottom:1rem;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);background:${c.color}0a">
+      <i class="fas ${c.icon}" style="color:${c.color};font-size:1.2rem"></i>
+    </div>
+    <div style="font-family:'Share Tech Mono',monospace;color:${c.color}66;font-size:0.65rem;margin-bottom:0.8rem;letter-spacing:0.2em">CERTIFICATE</div>
+    <h4 style="font-family:'Orbitron',sans-serif;color:${c.color};font-size:0.85rem;letter-spacing:0.05em;margin-bottom:0.5rem">${c.title}</h4>
+    <p style="font-family:'Share Tech Mono',monospace;color:#555;font-size:0.75rem;margin-bottom:1.5rem">${c.issuer} · ${c.year}</p>
+    <a href="${c.pdf}" download style="display:inline-flex;align-items:center;gap:0.5rem;font-family:'Share Tech Mono',monospace;font-size:0.7rem;color:${c.color};border:1px solid ${c.color}44;padding:0.4rem 1rem;transition:all 0.3s;background:${c.color}08;text-decoration:none"
+       onmouseover="this.style.background='${c.color}22';this.style.boxShadow='0 0 20px ${c.color}44'"
+       onmouseout="this.style.background='${c.color}08';this.style.boxShadow='none'">
+      <i class="fas fa-file-pdf"></i> DOWNLOAD
+    </a>
+  </div>`).join('');
+
+// ── INJECT PROJECTS ──
+document.getElementById('projects-container').innerHTML = projectsData.map(p => `
+  <div class="project-card p-6">
+    <div style="display:flex;align-items:center;gap:0.8rem;margin-bottom:1rem">
+      <i class="fas ${p.icon}" style="color:${p.color};font-size:1.2rem;text-shadow:0 0 8px ${p.color}"></i>
+      <h4 style="font-family:'Orbitron',sans-serif;color:${p.color};font-size:0.8rem;letter-spacing:0.05em">${p.title}</h4>
+    </div>
+    <p style="font-family:'Rajdhani',sans-serif;color:#777;font-size:0.95rem;margin-bottom:1rem;line-height:1.5">${p.desc}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:0.4rem">
+      ${p.stack.map(t => `<span style="font-family:'Share Tech Mono',monospace;font-size:0.65rem;padding:0.2rem 0.6rem;border:1px solid ${p.color}33;color:${p.color}99;background:${p.color}08">${t}</span>`).join('')}
+    </div>
+  </div>`).join('');
+
+// ── REVEAL SYSTEM (FIXED) ──
+// Only animate items that start below the viewport
+function setupReveal() {
+  const allReveal = document.querySelectorAll('.reveal, .reveal-left, .reveal-right');
+  const viewportH = window.innerHeight;
+
+  allReveal.forEach(el => {
+    const rect = el.getBoundingClientRect();
+    // Only add animation class to elements below the fold
+    if (rect.top > viewportH * 0.95) {
+      el.classList.add('will-animate');
+    }
+  });
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0, rootMargin: '0px 0px -30px 0px' });
+
+  document.querySelectorAll('.will-animate').forEach(el => observer.observe(el));
+
+  // Fallback: after 1s, force-show anything still hidden
+  setTimeout(() => {
+    document.querySelectorAll('.will-animate:not(.visible)').forEach(el => {
+      el.classList.add('visible');
+    });
+  }, 1000);
+}
+
+// ── SKILL BAR ANIMATION ──
+function setupSkillBars() {
+  const fills = document.querySelectorAll('.skill-fill');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.style.width = e.target.dataset.level + '%';
+        e.target.classList.add('animated');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1 });
+  fills.forEach(f => observer.observe(f));
+
+  // Fallback: trigger bars if skills section is already visible
+  setTimeout(() => {
+    fills.forEach(f => {
+      if (f.style.width === '0%' || f.style.width === '') {
+        const rect = f.getBoundingClientRect();
+        if (rect.top < window.innerHeight) {
+          f.style.width = f.dataset.level + '%';
+          f.classList.add('animated');
+        }
+      }
+    });
+  }, 500);
+}
+
+// ── NAV ACTIVE ──
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('[data-nav]');
+const navObserver = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      navLinks.forEach(l => l.classList.remove('active'));
+      const link = document.querySelector(`[href="#${e.target.id}"]`);
+      if (link) link.classList.add('active');
+    }
+  });
+}, { threshold: 0.4 });
+sections.forEach(s => navObserver.observe(s));
+
+// ── COUNT UP ──
+const countEls = document.querySelectorAll('.count-up');
+const countObserver = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const target = +e.target.dataset.target;
+      let current = 0;
+      const step = target / 40;
+      const timer = setInterval(() => {
+        current = Math.min(current + step, target);
+        e.target.textContent = Math.round(current) + (target >= 50 ? '+' : '');
+        if (current >= target) clearInterval(timer);
+      }, 40);
+      countObserver.unobserve(e.target);
+    }
+  });
+});
+countEls.forEach(el => countObserver.observe(el));
+
+// ── CONTACT FORM ──
+document.getElementById('contactForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.innerHTML = '[ MESSAGE SENT ✓ ]';
+  btn.style.color = '#00ff41';
+  btn.style.borderColor = '#00ff41';
+  setTimeout(() => { btn.innerHTML = '<i class="fas fa-paper-plane"></i> SEND MESSAGE'; e.target.reset(); }, 3000);
+});
+
+// ── INIT ──
+// Run after DOM is fully rendered
+window.addEventListener('load', () => {
+  setupReveal();
+  setupSkillBars();
+});
+
+// Also run immediately in case load already fired
+if (document.readyState === 'complete') {
+  setupReveal();
+  setupSkillBars();
+}
+</script>
+</body>
+</html>
